@@ -60,8 +60,13 @@ Flow:
 }
 
 func serve() {
-	vault := envOr("OBSIDIAN_VAULT", os.Getenv("HOME")+"/문서/프로젝트/mac-host-commands/vault")
-	data := envOr("OBSIDIAN_DATA", os.Getenv("HOME")+"/문서/시스템/obsidian-center")
+	vault := os.Getenv("OBSIDIAN_VAULT")
+	if vault == "" {
+		fmt.Fprintln(os.Stderr, "OBSIDIAN_VAULT is required")
+		fmt.Fprintln(os.Stderr, "  export OBSIDIAN_VAULT=/path/to/vault")
+		os.Exit(1)
+	}
+	data := envOr("OBSIDIAN_DATA", os.Getenv("HOME")+"/.obsidian-center")
 	addr := envOr("OBSIDIAN_ADDR", ":8910")
 
 	// parse flags
