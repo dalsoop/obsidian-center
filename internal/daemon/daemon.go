@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -28,10 +29,9 @@ func New(vaultDir, dataDir, addr string) *Daemon {
 		fmt.Printf("warning: git not available: %s\n", err)
 	}
 
-	repoDir := filepath.Join(dataDir, "repos")
-	gitSrv, err := NewGitServer(repoDir)
-	if err != nil {
-		fmt.Printf("warning: git server not available: %s\n", err)
+	gitSrv, err2 := StartSoftServe(context.Background(), softServeDataPath(), "23231")
+	if err2 != nil {
+		fmt.Printf("warning: soft-serve not available: %s\n", err2)
 	}
 
 	return &Daemon{
@@ -57,11 +57,6 @@ func (d *Daemon) Serve() error {
 	mux.HandleFunc("POST /api/lint/{id}", d.handleLint)
 	mux.HandleFunc("GET /api/repos", d.handleListRepos)
 	mux.HandleFunc("POST /api/repos/{name}", d.handleCreateRepo)
-
-	// Git smart HTTP server at /git/
-	if d.gitServer != nil {
-		mux.Handle("/git/", http.StripPrefix("/git", d.gitServer.Handler()))
-	}
 
 	fmt.Printf("obsidian-center serving on %s\n", d.addr)
 	fmt.Printf("vault: %s\n", d.vaultDir)
@@ -318,14 +313,13 @@ func (d *Daemon) handleCreateRepo(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "git server not available", 500)
 		return
 	}
-	path, err := d.gitServer.InitRepo(name)
+	cloneURL, err := d.gitServer.EnsureRepo(name)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
 	json.NewEncoder(w).Encode(map[string]any{
-		"repo":     name,
-		"path":     path,
-		"clone_url": fmt.Sprintf("http://localhost%s/git/%s.git", d.addr, name),
+		"repo":      name,
+		"clone_url": cloneURL,
 	})
 }
