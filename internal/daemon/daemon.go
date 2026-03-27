@@ -10,18 +10,25 @@ import (
 	"time"
 
 	"github.com/dalsoop/obsidian-center/internal/note"
+	"github.com/dalsoop/obsidian-center/internal/review"
 	"github.com/dalsoop/obsidian-center/internal/store"
 )
 
 type Daemon struct {
 	store    *store.Store
+	git      *review.GitOps
 	vaultDir string
 	addr     string
 }
 
 func New(vaultDir, dataDir, addr string) *Daemon {
+	gitOps, err := review.NewGitOps(vaultDir)
+	if err != nil {
+		fmt.Printf("warning: git not available: %s\n", err)
+	}
 	return &Daemon{
 		store:    store.New(dataDir),
+		git:      gitOps,
 		vaultDir: vaultDir,
 		addr:     addr,
 	}
@@ -133,10 +140,21 @@ func (d *Daemon) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// git: create branch + commit draft
+	if d.git != nil {
+		if err := d.git.CreateBranch(id); err != nil {
+			fmt.Printf("[git] branch create failed: %s\n", err)
+		} else {
+			d.git.CommitDraft(id, req.Title, req.Author)
+			fmt.Printf("[git] branch created: drafts/%s\n", id)
+		}
+	}
+
 	json.NewEncoder(w).Encode(map[string]any{
 		"id":     id,
 		"status": "draft",
 		"path":   draftPath,
+		"branch": fmt.Sprintf("drafts/%s", id),
 	})
 }
 
@@ -234,6 +252,16 @@ func (d *Daemon) handleMerge(w http.ResponseWriter, r *http.Request) {
 	if err := d.store.Merge(id); err != nil {
 		http.Error(w, err.Error(), 400)
 		return
+	}
+
+	// git: merge branch + cleanup
+	if d.git != nil {
+		if err := d.git.MergeBranch(id); err != nil {
+			fmt.Printf("[git] merge failed: %s\n", err)
+		} else {
+			d.git.DeleteBranch(id)
+			fmt.Printf("[git] merged + branch deleted: drafts/%s\n", id)
+		}
 	}
 
 	json.NewEncoder(w).Encode(map[string]any{
