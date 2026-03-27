@@ -15,10 +15,11 @@ import (
 )
 
 type Daemon struct {
-	store    *store.Store
-	git      *review.GitOps
-	vaultDir string
-	addr     string
+	store     *store.Store
+	git       *review.GitOps
+	gitServer *GitServer
+	vaultDir  string
+	addr      string
 }
 
 func New(vaultDir, dataDir, addr string) *Daemon {
@@ -26,11 +27,19 @@ func New(vaultDir, dataDir, addr string) *Daemon {
 	if err != nil {
 		fmt.Printf("warning: git not available: %s\n", err)
 	}
+
+	repoDir := filepath.Join(dataDir, "repos")
+	gitSrv, err := NewGitServer(repoDir)
+	if err != nil {
+		fmt.Printf("warning: git server not available: %s\n", err)
+	}
+
 	return &Daemon{
-		store:    store.New(dataDir),
-		git:      gitOps,
-		vaultDir: vaultDir,
-		addr:     addr,
+		store:     store.New(dataDir),
+		git:       gitOps,
+		gitServer: gitSrv,
+		vaultDir:  vaultDir,
+		addr:      addr,
 	}
 }
 
@@ -46,6 +55,13 @@ func (d *Daemon) Serve() error {
 	mux.HandleFunc("POST /api/reject/{id}", d.handleReject)
 	mux.HandleFunc("POST /api/merge/{id}", d.handleMerge)
 	mux.HandleFunc("POST /api/lint/{id}", d.handleLint)
+	mux.HandleFunc("GET /api/repos", d.handleListRepos)
+	mux.HandleFunc("POST /api/repos/{name}", d.handleCreateRepo)
+
+	// Git smart HTTP server at /git/
+	if d.gitServer != nil {
+		mux.Handle("/git/", http.StripPrefix("/git", d.gitServer.Handler()))
+	}
 
 	fmt.Printf("obsidian-center serving on %s\n", d.addr)
 	fmt.Printf("vault: %s\n", d.vaultDir)
@@ -284,5 +300,32 @@ func (d *Daemon) handleLint(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]any{
 		"status": status,
 		"errors": errors,
+	})
+}
+
+func (d *Daemon) handleListRepos(w http.ResponseWriter, r *http.Request) {
+	if d.gitServer == nil {
+		http.Error(w, "git server not available", 500)
+		return
+	}
+	repos := d.gitServer.ListRepos()
+	json.NewEncoder(w).Encode(map[string]any{"repos": repos})
+}
+
+func (d *Daemon) handleCreateRepo(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if d.gitServer == nil {
+		http.Error(w, "git server not available", 500)
+		return
+	}
+	path, err := d.gitServer.InitRepo(name)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]any{
+		"repo":     name,
+		"path":     path,
+		"clone_url": fmt.Sprintf("http://localhost%s/git/%s.git", d.addr, name),
 	})
 }
