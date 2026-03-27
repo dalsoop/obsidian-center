@@ -55,6 +55,7 @@ func (d *Daemon) Serve() error {
 	mux.HandleFunc("POST /api/reject/{id}", d.handleReject)
 	mux.HandleFunc("POST /api/merge/{id}", d.handleMerge)
 	mux.HandleFunc("POST /api/lint/{id}", d.handleLint)
+	mux.HandleFunc("GET /api/doctor", d.handleDoctor)
 	mux.HandleFunc("GET /api/repos", d.handleListRepos)
 	mux.HandleFunc("POST /api/repos/{name}", d.handleCreateRepo)
 

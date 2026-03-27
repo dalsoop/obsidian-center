@@ -35,6 +35,8 @@ func main() {
 		merge()
 	case "lint":
 		lint()
+	case "doctor":
+		doctor()
 	default:
 		printUsage()
 		os.Exit(1)
@@ -54,6 +56,7 @@ Usage:
   obsidian-center reject <id> --comment "..."  Reject a note
   obsidian-center merge <id>                 Merge approved note to vault
   obsidian-center lint <id>                  Lint check a draft
+  obsidian-center doctor                     Full system health check + auto-fix
 
 Flow:
   submit → review (lint gate) → approve/reject → merge`)
@@ -211,6 +214,40 @@ func lint() {
 		os.Exit(1)
 	}
 	apiPost("/api/lint/"+os.Args[2], "")
+}
+
+func doctor() {
+	url := envOr("OBSIDIAN_CENTER_URL", "http://localhost:8910") + "/api/doctor"
+	resp, err := http.Get(url)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %s\nobsidian-center serve가 실행 중인지 확인하세요.\n", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Checks []struct {
+			Name   string `json:"name"`
+			Status string `json:"status"`
+			Detail string `json:"detail"`
+		} `json:"checks"`
+		Passed int `json:"passed"`
+		Failed int `json:"failed"`
+		Fixed  int `json:"fixed"`
+		Warned int `json:"warned"`
+	}
+	json.NewDecoder(resp.Body).Decode(&result)
+
+	fmt.Println("=== obsidian-center doctor ===\n")
+	for _, c := range result.Checks {
+		icon := map[string]string{"pass": "✓", "fail": "✗", "fixed": "⚡", "warn": "⚠"}[c.Status]
+		detail := ""
+		if c.Detail != "" {
+			detail = " — " + c.Detail
+		}
+		fmt.Printf("  %s %s%s\n", icon, c.Name, detail)
+	}
+	fmt.Printf("\n  결과: %d 통과, %d 실패, %d 자동수정, %d 경고\n", result.Passed, result.Failed, result.Fixed, result.Warned)
 }
 
 func apiGet(path string) {
