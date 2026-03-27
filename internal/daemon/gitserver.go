@@ -26,9 +26,19 @@ func StartSoftServe(ctx context.Context, dataDir, sshPort string) (*GitServer, e
 	os.MkdirAll(dataDir, 0755)
 
 	cmd := exec.CommandContext(ctx, softBin, "serve")
+	// admin SSH 키 자동 등록
+	adminKey := ""
+	home, _ := os.UserHomeDir()
+	keyPath := filepath.Join(home, ".ssh", "id_ed25519.pub")
+	if data, err := os.ReadFile(keyPath); err == nil {
+		adminKey = string(data)
+	}
+
 	cmd.Env = append(os.Environ(),
 		"SOFT_SERVE_DATA_PATH="+dataDir,
 		"SOFT_SERVE_SSH_LISTEN_ADDR=:"+sshPort,
+		"SOFT_SERVE_GIT_LISTEN_ADDR=",
+		"SOFT_SERVE_INITIAL_ADMIN_KEYS="+adminKey,
 	)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
