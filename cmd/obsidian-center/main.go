@@ -238,7 +238,7 @@ func doctor() {
 	}
 	json.NewDecoder(resp.Body).Decode(&result)
 
-	fmt.Println("=== obsidian-center doctor ===\n")
+	fmt.Println("=== obsidian-center doctor ===")
 	for _, c := range result.Checks {
 		icon := map[string]string{"pass": "✓", "fail": "✗", "fixed": "⚡", "warn": "⚠"}[c.Status]
 		detail := ""
